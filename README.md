@@ -1,6 +1,6 @@
-# Whisper-Audio Bot 🤖🎙️
+# AlGranoBot 🤖🎙️
 
-Welcome to **Whisper-Audio Bot**, your local whisper-powered Telegram sidekick that transcribes voice messages and audio files with lightning speed and precision. Powered by the blazing-fast [faster-whisper](https://github.com/guillaumekln/faster-whisper) model, this bot runs locally, no cloud required — perfect for privacy-conscious geeks and audio aficionados alike.
+Welcome to **AlGranoBot**, your local whisper-powered Telegram sidekick that transcribes voice messages and audio files with lightning speed and precision. Powered by the blazing-fast [faster-whisper](https://github.com/guillaumekln/faster-whisper) model, this bot runs locally, no cloud required — perfect for privacy-conscious geeks and audio aficionados alike.
 
 ---
 
@@ -32,10 +32,10 @@ Welcome to **Whisper-Audio Bot**, your local whisper-powered Telegram sidekick t
 
 ### Using Docker Compose (Recommended)
 
-1. Clone this repo and navigate to the `Whisper-Audio` directory:
+1. Clone this repo and navigate to the `AlGranoBot` directory:
    ```bash
    git clone <repo-url>
-   cd Whisper-Audio
+   cd AlGranoBot
    ```
 
 2. Create a `.env` file with your bot token:
