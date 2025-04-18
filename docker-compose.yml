@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  whisper-audio-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    restart: always
+    volumes:
+      - .:/app
+    command: python main.py
