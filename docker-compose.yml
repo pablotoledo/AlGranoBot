@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ALLOWED_USERS=${ALLOWED_USERS}
     restart: always
     volumes:
       - .:/app
