@@ -1,6 +1,8 @@
 # AlGranoBot 🤖🎙️
 
-![AlGranoBot](./algrano.png)
+<p align="center">
+  <img src="algrano.png" alt="AlGranoBot" width="60%" />
+</p>
 
 Welcome to **AlGranoBot**, your local whisper-powered Telegram sidekick that transcribes voice messages and audio files with lightning speed and precision. Powered by the blazing-fast [faster-whisper](https://github.com/guillaumekln/faster-whisper) model, this bot runs locally, no cloud required — perfect for privacy-conscious geeks and audio aficionados alike.
 
