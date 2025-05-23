@@ -4,6 +4,8 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from faster_whisper import WhisperModel
+from pydub import AudioSegment
+import mimetypes
 
 # Configure logging
 logging.basicConfig(
@@ -55,6 +57,42 @@ def is_authorized(update: Update) -> bool:
     logger.info(f"User {user.id if user else 'None'} or chat {chat.id if chat else 'None'} is NOT authorized.")
     return False
 
+def get_audio_file_extension(file_name: str, mime_type: str = None) -> str:
+    """Determine the appropriate file extension for the audio file."""
+    # Try to get extension from filename first
+    if file_name:
+        _, ext = os.path.splitext(file_name.lower())
+        if ext in ['.ogg', '.mp3', '.m4a', '.wav', '.flac', '.aac']:
+            return ext
+    
+    # Try to determine from mime type
+    if mime_type:
+        mime_to_ext = {
+            'audio/ogg': '.ogg',
+            'audio/mpeg': '.mp3',
+            'audio/mp4': '.m4a',
+            'audio/x-m4a': '.m4a',
+            'audio/wav': '.wav',
+            'audio/flac': '.flac',
+            'audio/aac': '.aac'
+        }
+        return mime_to_ext.get(mime_type, '.ogg')
+    
+    # Default to .ogg for voice messages
+    return '.ogg'
+
+def convert_audio_to_wav(input_path: str, output_path: str) -> bool:
+    """Convert audio file to WAV format for better Whisper compatibility."""
+    try:
+        logger.info(f"Converting audio file {input_path} to WAV format")
+        audio = AudioSegment.from_file(input_path)
+        audio.export(output_path, format="wav")
+        logger.info(f"Successfully converted audio to {output_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Error converting audio file: {str(e)}")
+        return False
+
 # Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Sends a message when the /start command is issued."""
@@ -68,6 +106,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     await update.message.reply_text(
         "This bot transcribes voice messages and audio files using local Whisper.\n\n"
+        "Supported formats: OGG, MP3, M4A, WAV, FLAC, AAC\n\n"
         "Simply send or forward a voice message or audio file, and I will reply with the transcription."
     )
 
@@ -82,41 +121,91 @@ async def transcribe_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     voice = update.message.voice or update.message.audio
     if not voice:
         await update.message.reply_text("Please send an audio file or voice message.")
+        await processing_message.delete()
         return
     
     file = await context.bot.get_file(voice.file_id)
     
-    # Create a temporary file to save the audio
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as temp_audio:
-        await file.download_to_drive(temp_audio.name)
-        temp_audio_path = temp_audio.name
+    # Determine the appropriate file extension
+    file_name = getattr(voice, 'file_name', None)
+    mime_type = getattr(voice, 'mime_type', None)
+    original_ext = get_audio_file_extension(file_name, mime_type)
+    
+    logger.info(f"Processing audio file: name={file_name}, mime_type={mime_type}, extension={original_ext}")
+    
+    # Create temporary files for original and converted audio
+    temp_original_path = None
+    temp_converted_path = None
     
     try:
+        # Download the original file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=original_ext) as temp_original:
+            await file.download_to_drive(temp_original.name)
+            temp_original_path = temp_original.name
+        
+        # Determine if we need to convert the file
+        transcription_file_path = temp_original_path
+        
+        # For M4A and other formats that might need conversion, convert to WAV
+        if original_ext in ['.m4a', '.aac']:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_converted:
+                temp_converted_path = temp_converted.name
+            
+            if convert_audio_to_wav(temp_original_path, temp_converted_path):
+                transcription_file_path = temp_converted_path
+            else:
+                # If conversion fails, try with original file
+                logger.warning("Audio conversion failed, attempting transcription with original file")
+                transcription_file_path = temp_original_path
+        
         # Transcribe using local Whisper
-        logger.info(f"Transcribing file: {temp_audio_path}")
-        segments, info = model.transcribe(temp_audio_path, beam_size=5)
+        logger.info(f"Transcribing file: {transcription_file_path}")
+        segments, info = model.transcribe(transcription_file_path, beam_size=5)
         
         # Join all segments into a single text
         transcription = ""
         for segment in segments:
             transcription += segment.text + " "
         
-        # Send the transcription
-        await update.message.reply_text(f"Transcription:\n\n{transcription.strip()}")
+        transcription = transcription.strip()
+        
+        if not transcription:
+            await update.message.reply_text("No speech detected in the audio file. Please try with a different audio file.")
+        else:
+            # Send the transcription
+            await update.message.reply_text(f"Transcription:\n\n{transcription}")
+        
+        logger.info(f"Successfully transcribed audio file. Language: {info.language}, Duration: {info.duration:.2f}s")
     
     except Exception as e:
         logger.error(f"Error during transcription: {str(e)}")
-        await update.message.reply_text(f"Error during transcription: {str(e)}")
+        error_message = "Sorry, I couldn't transcribe this audio file. "
+        
+        # Provide more specific error messages
+        if "format" in str(e).lower() or "codec" in str(e).lower():
+            error_message += "The audio format might not be supported or the file might be corrupted."
+        elif "duration" in str(e).lower():
+            error_message += "The audio file might be too short or empty."
+        else:
+            error_message += f"Error: {str(e)}"
+        
+        await update.message.reply_text(error_message)
     
     finally:
-        # Clean up the temporary file
-        try:
-            os.unlink(temp_audio_path)
-        except Exception as e:
-            logger.error(f"Error deleting temporary file: {str(e)}")
+        # Clean up temporary files
+        for temp_path in [temp_original_path, temp_converted_path]:
+            if temp_path:
+                try:
+                    os.unlink(temp_path)
+                    logger.debug(f"Cleaned up temporary file: {temp_path}")
+                except Exception as e:
+                    logger.error(f"Error deleting temporary file {temp_path}: {str(e)}")
         
         # Delete the processing message
-        await processing_message.delete()
+        try:
+            await processing_message.delete()
+        except Exception as e:
+            logger.warning(f"Could not delete processing message: {str(e)}")
 
 def main() -> None:
     """Start the bot."""

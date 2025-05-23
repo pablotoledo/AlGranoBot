@@ -1,2 +1,6 @@
 python-telegram-bot==21.4
 faster-whisper
+pydub
+numpy
+pytest
+pytest-asyncio
